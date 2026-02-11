@@ -1,0 +1,28 @@
+[Unit]
+Description=WiFi Logger Service
+After=network.target gpsd.service
+Wants=gpsd.service
+Documentation=https://github.com/yourusername/wifi-logger
+
+[Service]
+Type=simple
+User=%i
+Group=%i
+WorkingDirectory=/opt/wifi-logger
+ExecStart=/usr/bin/python3 /opt/wifi-logger/src/main.py --service
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5s
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/wifi-logger /var/log/wifi-logger
+
+# Capabilities for raw socket capture
+AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN
+
+[Install]
+WantedBy=multi-user.target
