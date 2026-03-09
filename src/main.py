@@ -4,15 +4,15 @@ Main WiFi Logger Application
 """
 
 import argparse
+import json
 import logging
 import signal
+import subprocess
 import sys
 import time
 from pathlib import Path
 import yaml
 from datetime import datetime
-import daemon
-from daemon.pidfile import PIDLockFile
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -22,6 +22,8 @@ from capture.kismet_capture import KismetIntegration
 from capture.scapy_capture import ScapyCapture
 from utils.gps_handler import GPSHandler
 from web.app import create_app
+
+logger = logging.getLogger(__name__)
 
 class WiFiLogger:
     def __init__(self, config_path: str = "/opt/wifi-logger/config/config.yaml"):
@@ -33,6 +35,8 @@ class WiFiLogger:
         self.gps = None
         self.capture = None
         self.running = False
+        self.last_backup = datetime.utcnow()
+        self.last_cleanup = datetime.utcnow()
         
         logger.info("WiFi Logger initialized")
     
@@ -49,7 +53,14 @@ class WiFiLogger:
                     'interface': 'wlan0mon',
                     'method': 'kismet'
                 },
-                'logging': {'level': 'INFO'}
+                'logging': {'level': 'INFO'},
+                'gps': {'enabled': False},
+                'web': {'enabled': False},
+                'retention': {
+                    'keep_observations_days': 90,
+                    'keep_networks_days': 365,
+                    'cleanup_interval': 86400
+                }
             }
     
     def setup_logging(self):
@@ -57,11 +68,15 @@ class WiFiLogger:
         log_config = self.config.get('logging', {})
         log_level = getattr(logging, log_config.get('level', 'INFO'))
         
+        log_file = log_config.get('file', '/var/log/wifi-logger/wifi.log')
+        log_dir = Path(log_file).parent
+        log_dir.mkdir(parents=True, exist_ok=True)
+        
         logging.basicConfig(
             level=log_level,
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
             handlers=[
-                logging.FileHandler(log_config.get('file', '/var/log/wifi-logger/wifi.log')),
+                logging.FileHandler(log_file),
                 logging.StreamHandler()
             ]
         )
@@ -181,10 +196,7 @@ class WiFiLogger:
             self.capture.process_kismet_logs()
         
         # Database backup
-        backup_config = self.config['database']
-        if 'last_backup' not in locals():
-            self.last_backup = now
-        
+        backup_config = self.config.get('database', {})
         backup_interval = backup_config.get('backup_interval', 86400)
         if (now - self.last_backup).total_seconds() >= backup_interval:
             self.backup_database()
@@ -192,9 +204,6 @@ class WiFiLogger:
         
         # Data cleanup
         retention_config = self.config.get('retention', {})
-        if 'last_cleanup' not in locals():
-            self.last_cleanup = now
-        
         cleanup_interval = retention_config.get('cleanup_interval', 86400)
         if (now - self.last_cleanup).total_seconds() >= cleanup_interval:
             self.cleanup_old_data()
@@ -226,31 +235,31 @@ class WiFiLogger:
         retention = self.config.get('retention', {})
         
         try:
-            with self.db.connection() as conn:
-                cursor = conn.cursor()
-                
-                # Clean old observations
-                obs_days = retention.get('keep_observations_days', 90)
-                if obs_days > 0:
-                    cursor.execute("""
-                        DELETE FROM observations 
-                        WHERE timestamp < datetime('now', ?)
-                    """, (f'-{obs_days} days',))
-                    logger.info(f"Cleaned up observations older than {obs_days} days")
-                
-                # Clean networks with no recent observations
-                network_days = retention.get('keep_networks_days', 365)
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
+            
+            # Clean old observations
+            obs_days = retention.get('keep_observations_days', 90)
+            if obs_days > 0:
                 cursor.execute("""
-                    DELETE FROM networks 
-                    WHERE last_seen < datetime('now', ?)
-                    AND id NOT IN (
-                        SELECT DISTINCT network_id FROM observations 
-                        WHERE timestamp > datetime('now', ?)
-                    )
-                """, (f'-{network_days} days', f'-{obs_days} days'))
-                
-                conn.commit()
-                
+                    DELETE FROM observations 
+                    WHERE timestamp < datetime('now', ?)
+                """, (f'-{obs_days} days',))
+                logger.info(f"Cleaned up observations older than {obs_days} days")
+            
+            # Clean networks with no recent observations
+            network_days = retention.get('keep_networks_days', 365)
+            cursor.execute("""
+                DELETE FROM networks 
+                WHERE last_seen < datetime('now', ?)
+                AND id NOT IN (
+                    SELECT DISTINCT network_id FROM observations 
+                    WHERE timestamp > datetime('now', ?)
+                )
+            """, (f'-{network_days} days', f'-{obs_days} days'))
+            
+            conn.commit()
+            
         except Exception as e:
             logger.error(f"Error during cleanup: {e}")
     
@@ -307,14 +316,21 @@ def main():
     
     if args.service:
         # Run as daemon
-        pidfile = PIDLockFile('/var/run/wifi-logger.pid')
-        
-        with daemon.DaemonContext(
-            pidfile=pidfile,
-            working_directory='/opt/wifi-logger',
-            umask=0o002,
-            detach_process=True
-        ):
+        try:
+            from daemon.pidfile import PIDLockFile
+            import daemon
+            
+            pidfile = PIDLockFile('/var/run/wifi-logger.pid')
+            
+            with daemon.DaemonContext(
+                pidfile=pidfile,
+                working_directory='/opt/wifi-logger',
+                umask=0o002,
+                detach_process=True
+            ):
+                wifi_logger.run()
+        except ImportError:
+            logger.warning("python-daemon not installed, running in foreground")
             wifi_logger.run()
     else:
         # Run in foreground

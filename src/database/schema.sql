@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS networks (
     essid_hash TEXT,  -- For hidden networks (SHA256 of empty string or ESSID)
     first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    security_type TEXT CHECK(security_type IN ('open', 'wpa', 'wpa2', 'wpa3', 'wpa2/wpa3', 'wep', 'mixed')),
+    security_type TEXT CHECK(security_type IN ('open', 'wpa', 'wpa2', 'wpa3', 'wpa2/wpa', 'wpa2/wpa3', 'wep', 'mixed', 'unknown')),
     cipher TEXT,
     vendor TEXT,
     channel_width INTEGER,
@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS observations (
     longitude REAL,
     altitude REAL,
     accuracy REAL,  -- HDOP for GPS
-    rssi INTEGER NOT NULL,
+    rssi INTEGER NOT NULL DEFAULT 0,
     channel INTEGER,
     frequency INTEGER,
     noise_level INTEGER,

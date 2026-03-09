@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MetaDriver — WiFi Logger</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Courier New', monospace;
+            background: #0a0a0a;
+            color: #00ff41;
+            min-height: 100vh;
+        }
+        header {
+            background: #111;
+            border-bottom: 1px solid #00ff41;
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        header h1 { font-size: 1.4rem; letter-spacing: 2px; }
+        header .status { color: #0f0; font-size: 0.85rem; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 1.5rem; }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .stat-card {
+            background: #111;
+            border: 1px solid #1a3a1a;
+            border-radius: 4px;
+            padding: 1rem;
+            text-align: center;
+        }
+        .stat-card .value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #00ff41;
+        }
+        .stat-card .label {
+            font-size: 0.8rem;
+            color: #666;
+            margin-top: 0.3rem;
+        }
+        .panel {
+            background: #111;
+            border: 1px solid #1a3a1a;
+            border-radius: 4px;
+            margin-bottom: 1.5rem;
+        }
+        .panel-header {
+            padding: 0.8rem 1rem;
+            border-bottom: 1px solid #1a3a1a;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .panel-header h2 { font-size: 1rem; }
+        .panel-body { padding: 1rem; overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        th, td { padding: 0.5rem 0.8rem; text-align: left; border-bottom: 1px solid #1a1a1a; }
+        th { color: #00aa30; font-weight: normal; text-transform: uppercase; font-size: 0.75rem; }
+        tr:hover { background: #0a1a0a; }
+        .security-open { color: #ff4444; }
+        .security-wep { color: #ff8800; }
+        .security-wpa { color: #ffff00; }
+        .security-wpa2 { color: #00ff41; }
+        .security-wpa3 { color: #00ccff; }
+        .btn {
+            background: transparent;
+            border: 1px solid #00ff41;
+            color: #00ff41;
+            padding: 0.4rem 1rem;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 0.8rem;
+            border-radius: 3px;
+            transition: all 0.2s;
+        }
+        .btn:hover { background: #00ff41; color: #000; }
+        .toolbar { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+        input[type="text"] {
+            background: #0a0a0a;
+            border: 1px solid #1a3a1a;
+            color: #00ff41;
+            padding: 0.4rem 0.8rem;
+            font-family: inherit;
+            font-size: 0.85rem;
+            border-radius: 3px;
+        }
+        input[type="text"]:focus { outline: none; border-color: #00ff41; }
+        .hidden { display: none; }
+        #loading { text-align: center; padding: 2rem; color: #555; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>⟨ METADRIVER ⟩</h1>
+        <div class="status" id="status">● ONLINE</div>
+    </header>
+    <div class="container">
+        <div class="stats-grid" id="stats-grid">
+            <div class="stat-card">
+                <div class="value" id="stat-networks">—</div>
+                <div class="label">NETWORKS</div>
+            </div>
+            <div class="stat-card">
+                <div class="value" id="stat-hidden">—</div>
+                <div class="label">HIDDEN</div>
+            </div>
+            <div class="stat-card">
+                <div class="value" id="stat-observations">—</div>
+                <div class="label">OBSERVATIONS</div>
+            </div>
+            <div class="stat-card">
+                <div class="value" id="stat-vendors">—</div>
+                <div class="label">VENDORS</div>
+            </div>
+            <div class="stat-card">
+                <div class="value" id="stat-gps">—</div>
+                <div class="label">GPS POINTS</div>
+            </div>
+            <div class="stat-card">
+                <div class="value" id="stat-24h">—</div>
+                <div class="label">SEEN (24H)</div>
+            </div>
+        </div>
+
+        <div class="toolbar">
+            <input type="text" id="search-essid" placeholder="Filter by ESSID..." />
+            <input type="text" id="search-vendor" placeholder="Filter by vendor..." />
+            <select id="filter-security" class="btn" style="background:#0a0a0a;">
+                <option value="">All Security</option>
+                <option value="open">Open</option>
+                <option value="wep">WEP</option>
+                <option value="wpa">WPA</option>
+                <option value="wpa2">WPA2</option>
+                <option value="wpa3">WPA3</option>
+            </select>
+            <button class="btn" onclick="loadNetworks()">Search</button>
+            <button class="btn" onclick="exportCSV()">Export CSV</button>
+            <button class="btn" onclick="exportGeoJSON()">Export GeoJSON</button>
+        </div>
+
+        <div class="panel">
+            <div class="panel-header">
+                <h2>Discovered Networks</h2>
+                <span id="network-count" style="color:#555;font-size:0.8rem;"></span>
+            </div>
+            <div class="panel-body">
+                <div id="loading">Loading...</div>
+                <table id="networks-table" class="hidden">
+                    <thead>
+                        <tr>
+                            <th>BSSID</th>
+                            <th>ESSID</th>
+                            <th>Vendor</th>
+                            <th>Security</th>
+                            <th>First Seen</th>
+                            <th>Last Seen</th>
+                        </tr>
+                    </thead>
+                    <tbody id="networks-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-header">
+                <h2>Security Distribution</h2>
+            </div>
+            <div class="panel-body">
+                <div id="security-chart" style="display:flex;gap:1rem;flex-wrap:wrap;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function loadStats() {
+            try {
+                const res = await fetch('/api/stats');
+                const stats = await res.json();
+                document.getElementById('stat-networks').textContent = stats.total_networks || 0;
+                document.getElementById('stat-hidden').textContent = stats.hidden_networks || 0;
+                document.getElementById('stat-observations').textContent = stats.total_observations || 0;
+                document.getElementById('stat-vendors').textContent = stats.unique_vendors || 0;
+                document.getElementById('stat-gps').textContent = stats.gps_points || 0;
+                document.getElementById('stat-24h').textContent = stats.networks_seen_24h || 0;
+
+                const chartEl = document.getElementById('security-chart');
+                chartEl.innerHTML = '';
+                if (stats.security_distribution) {
+                    for (const [type, count] of Object.entries(stats.security_distribution)) {
+                        const bar = document.createElement('div');
+                        bar.className = 'stat-card';
+                        bar.innerHTML = `<div class="value security-${type || 'open'}">${count}</div><div class="label">${type || 'N/A'}</div>`;
+                        chartEl.appendChild(bar);
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to load stats:', e);
+            }
+        }
+
+        async function loadNetworks() {
+            const params = new URLSearchParams();
+            const essid = document.getElementById('search-essid').value;
+            const vendor = document.getElementById('search-vendor').value;
+            const security = document.getElementById('filter-security').value;
+            if (essid) params.set('essid', essid);
+            if (vendor) params.set('vendor', vendor);
+            if (security) params.set('security', security);
+
+            try {
+                const res = await fetch('/api/networks?' + params.toString());
+                const networks = await res.json();
+                const tbody = document.getElementById('networks-body');
+                tbody.innerHTML = '';
+
+                networks.forEach(n => {
+                    const secClass = 'security-' + (n.security_type || 'open');
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${n.bssid}</td>
+                        <td>${n.essid || '<em style="color:#555">Hidden</em>'}</td>
+                        <td>${n.vendor || '—'}</td>
+                        <td class="${secClass}">${(n.security_type || 'unknown').toUpperCase()}</td>
+                        <td>${n.first_seen || '—'}</td>
+                        <td>${n.last_seen || '—'}</td>
+                    `;
+                    tbody.appendChild(row);
+                });
+
+                document.getElementById('loading').classList.add('hidden');
+                document.getElementById('networks-table').classList.remove('hidden');
+                document.getElementById('network-count').textContent = networks.length + ' networks';
+            } catch (e) {
+                document.getElementById('loading').textContent = 'Failed to load networks';
+                console.error('Failed to load networks:', e);
+            }
+        }
+
+        function exportCSV() {
+            window.location.href = '/api/export/csv';
+        }
+
+        function exportGeoJSON() {
+            window.open('/api/geojson', '_blank');
+        }
+
+        loadStats();
+        loadNetworks();
+        setInterval(loadStats, 30000);
+    </script>
+</body>
+</html>

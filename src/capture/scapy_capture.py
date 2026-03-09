@@ -4,13 +4,18 @@ Direct packet capture using Scapy
 For when you want more control than Kismet
 """
 
-from scapy.all import *
-from scapy.layers.dot11 import Dot11, Dot11Beacon, Dot11ProbeResp, RadioTap
+import json
 import logging
 from datetime import datetime
 from typing import Dict, Optional
 import hashlib
-from .db_manager import WiFiDatabase
+
+try:
+    from scapy.all import sniff
+    from scapy.layers.dot11 import Dot11, Dot11Beacon, Dot11ProbeResp, RadioTap
+    SCAPY_AVAILABLE = True
+except ImportError:
+    SCAPY_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +24,9 @@ class ScapyCapture:
         self.db = db_manager
         self.interface = interface
         self.networks_seen = set()
+        
+        if not SCAPY_AVAILABLE:
+            logger.warning("Scapy is not installed. Install with: pip install scapy")
         
     def packet_handler(self, packet):
         """Handle captured packets"""
@@ -38,12 +46,13 @@ class ScapyCapture:
         
         # Check if we have RadioTap layer for signal info
         rssi = noise = None
+        freq = None
         if packet.haslayer(RadioTap):
             rtap = packet[RadioTap]
             # Try to extract RSSI (varies by driver)
             if hasattr(rtap, 'dBm_AntSignal'):
                 rssi = rtap.dBm_AntSignal
-            elif hasattr(rtap, 'dBm_AntNoise'):
+            if hasattr(rtap, 'dBm_AntNoise'):
                 noise = rtap.dBm_AntNoise
         
         # Get ESSID
@@ -53,8 +62,15 @@ class ScapyCapture:
             if beacon.info:
                 try:
                     essid = beacon.info.decode('utf-8', errors='ignore').strip()
-                except:
+                except Exception:
                     essid = str(beacon.info)
+        elif packet.haslayer(Dot11ProbeResp):
+            probe = packet[Dot11ProbeResp]
+            if probe.info:
+                try:
+                    essid = probe.info.decode('utf-8', errors='ignore').strip()
+                except Exception:
+                    essid = str(probe.info)
         
         # Get capabilities
         capabilities = None
@@ -84,7 +100,7 @@ class ScapyCapture:
             'rssi': rssi,
             'noise_level': noise,
             'channel': channel,
-            'frequency': freq if 'freq' in locals() else None
+            'frequency': freq
         }
         
         # Add to database
@@ -133,19 +149,28 @@ class ScapyCapture:
                 return 'wpa2'  # Default assumption
             else:
                 return 'open'
-        except:
+        except Exception:
             return 'unknown'
     
     def _frequency_to_channel(self, freq: int) -> Optional[int]:
         """Convert frequency to channel number"""
         if 2412 <= freq <= 2484:
+            if freq == 2484:
+                return 14
             return (freq - 2407) // 5
         elif 5170 <= freq <= 5825:
             return (freq - 5000) // 5
+        elif 5955 <= freq <= 7115:
+            # 6 GHz band (WiFi 6E)
+            return (freq - 5950) // 5
         return None
     
     def start_capture(self, count: Optional[int] = None):
         """Start capturing packets"""
+        if not SCAPY_AVAILABLE:
+            logger.error("Cannot start capture: scapy is not installed")
+            return
+        
         logger.info(f"Starting capture on {self.interface}")
         
         try:

@@ -18,11 +18,12 @@ class WiFiDatabase:
     def __init__(self, db_path: str = "/var/lib/wifi-logger/wifi_data.db"):
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._conn = None
         self._init_database()
         
     def _init_database(self):
         """Initialize database with schema"""
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(str(self.db_path)) as conn:
             cursor = conn.cursor()
             
             # Read and execute schema
@@ -104,9 +105,28 @@ class WiFiDatabase:
         for table_sql in tables:
             cursor.execute(table_sql)
     
+    def get_connection(self):
+        """Get a reusable database connection"""
+        if self._conn is None:
+            self._conn = sqlite3.connect(str(self.db_path))
+            self._conn.execute("PRAGMA journal_mode=WAL")
+            self._conn.execute("PRAGMA foreign_keys=ON")
+        return self._conn
+
+    def close(self):
+        """Close the database connection"""
+        if self._conn:
+            try:
+                self._conn.close()
+            except Exception as e:
+                logger.error(f"Error closing database: {e}")
+            finally:
+                self._conn = None
+        logger.info("Database connection closed")
+    
     def get_network_id(self, bssid: str, essid: Optional[str] = None) -> int:
         """Get or create network ID for a BSSID"""
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(str(self.db_path)) as conn:
             cursor = conn.cursor()
             
             # Check if network exists
@@ -140,7 +160,7 @@ class WiFiDatabase:
     
     def add_observation(self, network_data: Dict, observation_data: Dict) -> int:
         """Add a new observation"""
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(str(self.db_path)) as conn:
             cursor = conn.cursor()
             
             # Get or create network
@@ -160,14 +180,18 @@ class WiFiDatabase:
                     update_values.append(network_data[field])
             
             if update_fields:
-                update_values.append(network_id)
+                update_values.extend([datetime.utcnow(), network_id])
                 cursor.execute(f"""
                     UPDATE networks 
                     SET {', '.join(update_fields)}, last_seen = ?
                     WHERE id = ?
-                """, update_values + [datetime.utcnow()])
+                """, update_values)
             
-            # Add observation
+            # Add observation - rssi can be None for some capture methods
+            rssi = observation_data.get('rssi')
+            if rssi is None:
+                rssi = 0  # Default to 0 if no signal info available
+            
             cursor.execute("""
                 INSERT INTO observations 
                 (network_id, timestamp, latitude, longitude, altitude, 
@@ -181,7 +205,7 @@ class WiFiDatabase:
                 observation_data.get('longitude'),
                 observation_data.get('altitude'),
                 observation_data.get('accuracy'),
-                observation_data.get('rssi'),
+                rssi,
                 observation_data.get('channel'),
                 observation_data.get('frequency'),
                 observation_data.get('noise_level'),
@@ -198,7 +222,7 @@ class WiFiDatabase:
     
     def add_gps_point(self, gps_data: Dict) -> int:
         """Add GPS tracking point"""
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(str(self.db_path)) as conn:
             cursor = conn.cursor()
             
             cursor.execute("""
@@ -225,7 +249,7 @@ class WiFiDatabase:
     
     def query_networks(self, filters: Optional[Dict] = None) -> List[Dict]:
         """Query networks with optional filters"""
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(str(self.db_path)) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             
@@ -260,7 +284,7 @@ class WiFiDatabase:
     
     def get_network_observations(self, network_id: int, limit: int = 1000) -> List[Dict]:
         """Get observations for a specific network"""
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(str(self.db_path)) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             
@@ -277,7 +301,7 @@ class WiFiDatabase:
     
     def get_stats(self) -> Dict:
         """Get database statistics"""
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(str(self.db_path)) as conn:
             cursor = conn.cursor()
             
             stats = {}
@@ -318,7 +342,7 @@ class WiFiDatabase:
     
     def export_geojson(self, network_ids: Optional[List[int]] = None) -> Dict:
         """Export observations as GeoJSON"""
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(str(self.db_path)) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             
@@ -361,7 +385,7 @@ class WiFiDatabase:
                         "security": row_dict['security_type'],
                         "rssi": row_dict['rssi'],
                         "channel": row_dict['channel'],
-                        "timestamp": row_dict['timestamp'],
+                        "timestamp": str(row_dict['timestamp']),
                         "network_id": row_dict['network_id']
                     }
                 }

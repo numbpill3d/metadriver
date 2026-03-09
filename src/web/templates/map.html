@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MetaDriver — Map View</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Courier New', monospace;
+            background: #0a0a0a;
+            color: #00ff41;
+        }
+        header {
+            background: #111;
+            border-bottom: 1px solid #00ff41;
+            padding: 0.8rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 1000;
+            position: relative;
+        }
+        header h1 { font-size: 1.2rem; letter-spacing: 2px; }
+        header a { color: #00ff41; text-decoration: none; font-size: 0.85rem; }
+        header a:hover { text-decoration: underline; }
+        #map { width: 100%; height: calc(100vh - 50px); }
+        .leaflet-popup-content-wrapper {
+            background: #111 !important;
+            color: #00ff41 !important;
+            border: 1px solid #00ff41 !important;
+            border-radius: 4px !important;
+            font-family: 'Courier New', monospace !important;
+        }
+        .leaflet-popup-tip { background: #111 !important; }
+        .popup-label { color: #555; font-size: 0.75rem; text-transform: uppercase; }
+        .popup-value { color: #00ff41; margin-bottom: 0.3rem; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>⟨ METADRIVER ⟩ MAP</h1>
+        <a href="/">← Dashboard</a>
+    </header>
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        const map = L.map('map').setView([0, 0], 2);
+
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+            subdomains: 'abcd',
+            maxZoom: 20
+        }).addTo(map);
+
+        function getSecurityColor(security) {
+            const colors = {
+                'open': '#ff4444',
+                'wep': '#ff8800',
+                'wpa': '#ffff00',
+                'wpa2': '#00ff41',
+                'wpa3': '#00ccff',
+                'wpa2/wpa': '#88ff00',
+                'wpa2/wpa3': '#00eeff'
+            };
+            return colors[security] || '#888888';
+        }
+
+        async function loadGeoJSON() {
+            try {
+                const res = await fetch('/api/geojson');
+                const geojson = await res.json();
+
+                if (geojson.features.length === 0) {
+                    document.getElementById('map').innerHTML += '<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1000;color:#555;font-size:1.2rem;">No geolocated observations yet</div>';
+                    return;
+                }
+
+                const layer = L.geoJSON(geojson, {
+                    pointToLayer: function(feature, latlng) {
+                        return L.circleMarker(latlng, {
+                            radius: 6,
+                            fillColor: getSecurityColor(feature.properties.security),
+                            color: '#000',
+                            weight: 1,
+                            opacity: 1,
+                            fillOpacity: 0.8
+                        });
+                    },
+                    onEachFeature: function(feature, layer) {
+                        const p = feature.properties;
+                        layer.bindPopup(`
+                            <div class="popup-label">ESSID</div>
+                            <div class="popup-value">${p.essid}</div>
+                            <div class="popup-label">BSSID</div>
+                            <div class="popup-value">${p.bssid}</div>
+                            <div class="popup-label">Security</div>
+                            <div class="popup-value">${(p.security || 'unknown').toUpperCase()}</div>
+                            <div class="popup-label">RSSI</div>
+                            <div class="popup-value">${p.rssi || '—'} dBm</div>
+                            <div class="popup-label">Channel</div>
+                            <div class="popup-value">${p.channel || '—'}</div>
+                        `);
+                    }
+                }).addTo(map);
+
+                map.fitBounds(layer.getBounds(), { padding: [30, 30] });
+            } catch (e) {
+                console.error('Failed to load GeoJSON:', e);
+            }
+        }
+
+        loadGeoJSON();
+    </script>
+</body>
+</html>
