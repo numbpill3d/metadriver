@@ -4,8 +4,10 @@ Main WiFi Logger Application
 """
 
 import argparse
+import csv
 import json
 import logging
+import logging.handlers
 import signal
 import subprocess
 import sys
@@ -67,18 +69,20 @@ class WiFiLogger:
         """Setup logging configuration"""
         log_config = self.config.get('logging', {})
         log_level = getattr(logging, log_config.get('level', 'INFO'))
-        
+
         log_file = log_config.get('file', '/var/log/wifi-logger/wifi.log')
         log_dir = Path(log_file).parent
         log_dir.mkdir(parents=True, exist_ok=True)
-        
+
+        rotating = logging.handlers.RotatingFileHandler(
+            log_file,
+            maxBytes=log_config.get('max_size', 10485760),
+            backupCount=log_config.get('backup_count', 5)
+        )
         logging.basicConfig(
             level=log_level,
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-            handlers=[
-                logging.FileHandler(log_file),
-                logging.StreamHandler()
-            ]
+            handlers=[rotating, logging.StreamHandler()]
         )
     
     def setup_interface(self):
@@ -129,9 +133,15 @@ class WiFiLogger:
             self.capture.process_kismet_logs()
             
         elif method == 'scapy':
-            self.capture = ScapyCapture(self.db, capture_config['interface'])
-            # Scapy capture runs in main thread
-            # You might want to run this in a separate thread
+            min_rssi = capture_config.get('min_rssi', -90)
+            self.capture = ScapyCapture(self.db, capture_config['interface'], min_rssi=min_rssi)
+            channels = capture_config.get('scan_channels')
+            dwell = capture_config.get('channel_dwell_time', 0.5)
+            from threading import Thread
+            t = Thread(target=self.capture.start_capture,
+                       kwargs={'channels': channels, 'dwell_time': dwell})
+            t.daemon = True
+            t.start()
         
         logger.info(f"Started {method} capture on {capture_config['interface']}")
     
@@ -139,14 +149,26 @@ class WiFiLogger:
         """Start web interface if enabled"""
         web_config = self.config.get('web', {})
         if web_config.get('enabled', False):
-            app = create_app(self.db)
-            # Run in separate thread
+            app = create_app(self.db, web_config.get('api_key', ''))
             from threading import Thread
-            web_thread = Thread(target=app.run, kwargs={
-                'host': web_config.get('host', '127.0.0.1'),
-                'port': web_config.get('port', 8080),
-                'debug': web_config.get('debug', False)
-            })
+            try:
+                from waitress import serve
+                target = serve
+                kwargs = {
+                    'app': app,
+                    'host': web_config.get('host', '127.0.0.1'),
+                    'port': web_config.get('port', 8080)
+                }
+            except ImportError:
+                logger.warning("waitress not installed, falling back to Flask dev server")
+                target = app.run
+                kwargs = {
+                    'host': web_config.get('host', '127.0.0.1'),
+                    'port': web_config.get('port', 8080),
+                    'debug': False,
+                    'use_reloader': False
+                }
+            web_thread = Thread(target=target, kwargs=kwargs)
             web_thread.daemon = True
             web_thread.start()
             logger.info(f"Web interface started on {web_config.get('host')}:{web_config.get('port')}")
@@ -233,33 +255,28 @@ class WiFiLogger:
     def cleanup_old_data(self):
         """Clean up old data based on retention policy"""
         retention = self.config.get('retention', {})
-        
+        obs_days = retention.get('keep_observations_days', 90)
+        network_days = retention.get('keep_networks_days', 365)
+
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
-            
-            # Clean old observations
-            obs_days = retention.get('keep_observations_days', 90)
-            if obs_days > 0:
+            import sqlite3
+            with sqlite3.connect(str(self.db.db_path)) as conn:
+                cursor = conn.cursor()
+                if obs_days > 0:
+                    cursor.execute("""
+                        DELETE FROM observations
+                        WHERE timestamp < datetime('now', ?)
+                    """, (f'-{obs_days} days',))
+                    logger.info(f"Cleaned up observations older than {obs_days} days")
                 cursor.execute("""
-                    DELETE FROM observations 
-                    WHERE timestamp < datetime('now', ?)
-                """, (f'-{obs_days} days',))
-                logger.info(f"Cleaned up observations older than {obs_days} days")
-            
-            # Clean networks with no recent observations
-            network_days = retention.get('keep_networks_days', 365)
-            cursor.execute("""
-                DELETE FROM networks 
-                WHERE last_seen < datetime('now', ?)
-                AND id NOT IN (
-                    SELECT DISTINCT network_id FROM observations 
-                    WHERE timestamp > datetime('now', ?)
-                )
-            """, (f'-{network_days} days', f'-{obs_days} days'))
-            
-            conn.commit()
-            
+                    DELETE FROM networks
+                    WHERE last_seen < datetime('now', ?)
+                    AND id NOT IN (
+                        SELECT DISTINCT network_id FROM observations
+                        WHERE timestamp > datetime('now', ?)
+                    )
+                """, (f'-{network_days} days', f'-{obs_days} days'))
+                conn.commit()
         except Exception as e:
             logger.error(f"Error during cleanup: {e}")
     
@@ -298,10 +315,29 @@ def main():
         return
     
     if args.export:
-        # Export functionality
-        data = wifi_logger.db.export_geojson()
-        with open(args.export, 'w') as f:
-            json.dump(data, f)
+        export_path = Path(args.export)
+        if export_path.suffix.lower() == '.csv':
+            networks = wifi_logger.db.query_networks()
+            with open(export_path, 'w', newline='') as f:
+                writer = csv.DictWriter(f, fieldnames=[
+                    'bssid', 'essid', 'vendor', 'security_type',
+                    'first_seen', 'last_seen', 'observation_count'
+                ])
+                writer.writeheader()
+                for n in networks:
+                    writer.writerow({
+                        'bssid': n['bssid'],
+                        'essid': n['essid'] or 'Hidden',
+                        'vendor': n['vendor'] or 'Unknown',
+                        'security_type': n['security_type'] or 'Unknown',
+                        'first_seen': n['first_seen'],
+                        'last_seen': n['last_seen'],
+                        'observation_count': n.get('observation_count', 0)
+                    })
+        else:
+            data = wifi_logger.db.export_geojson()
+            with open(export_path, 'w') as f:
+                json.dump(data, f)
         print(f"Exported data to {args.export}")
         return
     

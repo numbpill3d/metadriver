@@ -161,13 +161,30 @@ class WiFiDatabase:
     def add_observation(self, network_data: Dict, observation_data: Dict) -> int:
         """Add a new observation"""
         with sqlite3.connect(str(self.db_path)) as conn:
+            conn.execute("PRAGMA foreign_keys=ON")
             cursor = conn.cursor()
-            
-            # Get or create network
-            network_id = self.get_network_id(
-                network_data['bssid'],
-                network_data.get('essid')
-            )
+
+            bssid = network_data['bssid']
+            essid = network_data.get('essid')
+
+            # Get or create network within the same connection
+            cursor.execute("SELECT id FROM networks WHERE bssid = ?", (bssid,))
+            result = cursor.fetchone()
+            if result:
+                network_id = result[0]
+            else:
+                essid_hash = hashlib.sha256(
+                    (essid or "").encode('utf-8')
+                ).hexdigest() if essid else None
+                is_hidden = 1 if not essid or essid.strip() == "" else 0
+                cursor.execute("""
+                    INSERT INTO networks
+                    (bssid, essid, essid_hash, is_hidden, first_seen, last_seen)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (bssid, essid if essid and essid.strip() else None,
+                      essid_hash, is_hidden,
+                      datetime.utcnow(), datetime.utcnow()))
+                network_id = cursor.lastrowid
             
             # Update network info if needed
             update_fields = []
@@ -252,8 +269,13 @@ class WiFiDatabase:
         with sqlite3.connect(str(self.db_path)) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            
-            query = "SELECT * FROM networks WHERE 1=1"
+
+            query = """
+                SELECT n.*, COUNT(o.id) as observation_count
+                FROM networks n
+                LEFT JOIN observations o ON o.network_id = n.id
+                WHERE 1=1
+            """
             params = []
             
             if filters:
@@ -276,8 +298,11 @@ class WiFiDatabase:
                     elif key == 'is_hidden':
                         query += " AND is_hidden = ?"
                         params.append(value)
-            
-            query += " ORDER BY last_seen DESC"
+
+            limit = filters.get('limit', 100) if filters else 100
+            offset = filters.get('offset', 0) if filters else 0
+            query += " GROUP BY n.id ORDER BY n.last_seen DESC LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
             cursor.execute(query, params)
             
             return [dict(row) for row in cursor.fetchall()]

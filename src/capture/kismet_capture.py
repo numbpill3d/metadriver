@@ -21,7 +21,9 @@ class KismetIntegration:
     def __init__(self, db_manager, kismet_log_dir: str = "/var/log/kismet"):
         self.db = db_manager
         self.kismet_dir = Path(kismet_log_dir)
-        self.last_processed = {}
+        # Tracks per-file the highest last_time already imported (kismetdb)
+        # or mtime at time of full import (netxml)
+        self._watermarks: dict = {}  # path_str -> last_time (int) or mtime (float)
         
     def start_kismet(self, interface: str = "wlan0mon", gps: Optional[str] = None):
         """Start Kismet with proper configuration"""
@@ -65,15 +67,17 @@ class KismetIntegration:
                 self._process_netxml(log_path)
     
     def _process_kismetdb(self, db_path: Path):
-        """Process Kismet SQLite database"""
+        """Process Kismet SQLite database, importing only new records since last run."""
+        key = str(db_path)
+        last_time = self._watermarks.get(key, 0)
+
         try:
             kismet_conn = sqlite3.connect(db_path)
             kismet_conn.row_factory = sqlite3.Row
             cursor = kismet_conn.cursor()
-            
-            # Get devices
+
             cursor.execute("""
-                SELECT d.devkey AS bssid, d.type, 
+                SELECT d.devkey AS bssid, d.type,
                        d.first_time, d.last_time,
                        d.datasize, d.device,
                        d.strongest_signal AS rssi,
@@ -83,14 +87,14 @@ class KismetIntegration:
                        json_extract(d.device, '$.kismet.device.base.manuf') as vendor,
                        json_extract(d.device, '$.kismet.device.base.location') as location
                 FROM devices d
-                WHERE d.type = 0  -- WiFi devices
-            """)
-            
+                WHERE d.type = 0 AND d.last_time > ?
+            """, (last_time,))
+
             processed = 0
+            max_time = last_time
             for row in cursor.fetchall():
                 device = dict(row)
-                
-                # Extract location if available
+
                 lat = lon = alt = None
                 if device['location']:
                     try:
@@ -98,18 +102,15 @@ class KismetIntegration:
                         lat = loc_data.get('kismet.common.location.lat')
                         lon = loc_data.get('kismet.common.location.lon')
                         alt = loc_data.get('kismet.common.location.alt')
-                    except:
+                    except Exception:
                         pass
-                
-                # Network data
+
                 network_data = {
                     'bssid': device['bssid'],
                     'essid': device['essid'],
                     'vendor': device['vendor'],
                     'security_type': self._parse_kismet_crypt(device['crypt'])
                 }
-                
-                # Observation data
                 observation_data = {
                     'timestamp': datetime.fromtimestamp(device['last_time']),
                     'latitude': lat,
@@ -119,22 +120,29 @@ class KismetIntegration:
                     'channel': device['channel'],
                     'frequency': device['frequency']
                 }
-                
+
                 try:
                     self.db.add_observation(network_data, observation_data)
                     processed += 1
+                    if device['last_time'] > max_time:
+                        max_time = device['last_time']
                 except Exception as e:
                     logger.error(f"Error processing device {device['bssid']}: {e}")
-            
-            logger.info(f"Processed {processed} devices from {db_path}")
+
+            self._watermarks[key] = max_time
+            logger.info(f"Processed {processed} new devices from {db_path}")
             kismet_conn.close()
-            
+
         except Exception as e:
             logger.error(f"Error processing Kismet DB {db_path}: {e}")
     
     def _process_netxml(self, xml_path: Path):
-        """Process Kismet netxml file"""
-        try:
+        """Process Kismet netxml file, skipping if already fully imported."""
+        key = str(xml_path)
+        current_mtime = xml_path.stat().st_mtime
+        if self._watermarks.get(key) == current_mtime:
+            return  # file unchanged since last import
+
             tree = ET.parse(xml_path)
             root = tree.getroot()
             
@@ -220,22 +228,37 @@ class KismetIntegration:
                     logger.error(f"Error processing network {bssid_text}: {e}")
             
             logger.info(f"Processed {processed} networks from {xml_path}")
-            
+            self._watermarks[key] = current_mtime
+
         except Exception as e:
             logger.error(f"Error processing netxml {xml_path}: {e}")
     
     def _parse_kismet_crypt(self, crypt_flags: int) -> str:
-        """Parse Kismet crypt flags"""
-        if crypt_flags == 0:
+        """Parse Kismet crypt flags (from kismet_802_11_device.h)"""
+        if crypt_flags is None or crypt_flags == 0:
             return 'open'
-        elif crypt_flags & 0x01:  # WEP
-            return 'wep'
-        elif crypt_flags & 0x02:  # WPA
-            return 'wpa'
-        elif crypt_flags & 0x04:  # WPA2
-            return 'wpa2'
-        elif crypt_flags & 0x08:  # WPA3
+        # Kismet crypt flags
+        KIS_CRYPT_WEP       = 0x0000000000000004
+        KIS_CRYPT_WPA       = 0x0000000000000010
+        KIS_CRYPT_WPA2      = 0x0000000000400000
+        KIS_CRYPT_WPA3      = 0x0000000001000000
+        KIS_CRYPT_WPA_CCMP  = 0x0000000000100000
+
+        try:
+            flags = int(crypt_flags)
+        except (TypeError, ValueError):
+            return 'unknown'
+
+        if flags & KIS_CRYPT_WPA3:
             return 'wpa3'
+        elif flags & KIS_CRYPT_WPA2 or flags & KIS_CRYPT_WPA_CCMP:
+            if flags & KIS_CRYPT_WPA:
+                return 'wpa2/wpa'
+            return 'wpa2'
+        elif flags & KIS_CRYPT_WPA:
+            return 'wpa'
+        elif flags & KIS_CRYPT_WEP:
+            return 'wep'
         else:
             return 'mixed'
     

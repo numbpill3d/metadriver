@@ -10,7 +10,7 @@ database:
 # Capture settings
 capture:
   interface: "wlan0mon"
-  method: "kismet"  # kismet, scapy, or tshark
+  method: "kismet"  # kismet or scapy
   scan_channels: [1, 6, 11, 36, 40, 44, 48, 149, 153, 157, 161, 165]
   channel_dwell_time: 0.5  # seconds
   min_rssi: -90  # Minimum RSSI to log

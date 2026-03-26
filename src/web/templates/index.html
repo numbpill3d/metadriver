@@ -82,7 +82,7 @@
             transition: all 0.2s;
         }
         .btn:hover { background: #00ff41; color: #000; }
-        .toolbar { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+        .toolbar { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; align-items: center; }
         input[type="text"] {
             background: #0a0a0a;
             border: 1px solid #1a3a1a;
@@ -95,6 +95,8 @@
         input[type="text"]:focus { outline: none; border-color: #00ff41; }
         .hidden { display: none; }
         #loading { text-align: center; padding: 2rem; color: #555; }
+        .pagination { display: flex; gap: 0.5rem; align-items: center; margin-top: 1rem; }
+        .pagination span { color: #555; font-size: 0.8rem; }
     </style>
 </head>
 <body>
@@ -160,12 +162,18 @@
                             <th>ESSID</th>
                             <th>Vendor</th>
                             <th>Security</th>
+                            <th>Observations</th>
                             <th>First Seen</th>
                             <th>Last Seen</th>
                         </tr>
                     </thead>
                     <tbody id="networks-body"></tbody>
                 </table>
+                <div class="pagination">
+                    <button class="btn" id="btn-prev" onclick="changePage(-1)" disabled>← Prev</button>
+                    <span id="page-info"></span>
+                    <button class="btn" id="btn-next" onclick="changePage(1)">Next →</button>
+                </div>
             </div>
         </div>
 
@@ -180,6 +188,10 @@
     </div>
 
     <script>
+        const PAGE_SIZE = 100;
+        let currentPage = 1;
+        let lastNetworkCount = 0;
+
         async function loadStats() {
             try {
                 const res = await fetch('/api/stats');
@@ -206,7 +218,8 @@
             }
         }
 
-        async function loadNetworks() {
+        async function loadNetworks(page = 1) {
+            currentPage = page;
             const params = new URLSearchParams();
             const essid = document.getElementById('search-essid').value;
             const vendor = document.getElementById('search-vendor').value;
@@ -214,10 +227,13 @@
             if (essid) params.set('essid', essid);
             if (vendor) params.set('vendor', vendor);
             if (security) params.set('security', security);
+            params.set('page', page);
+            params.set('limit', PAGE_SIZE);
 
             try {
                 const res = await fetch('/api/networks?' + params.toString());
                 const networks = await res.json();
+                lastNetworkCount = networks.length;
                 const tbody = document.getElementById('networks-body');
                 tbody.innerHTML = '';
 
@@ -227,10 +243,11 @@
                     row.innerHTML = `
                         <td>${n.bssid}</td>
                         <td>${n.essid || '<em style="color:#555">Hidden</em>'}</td>
-                        <td>${n.vendor || '—'}</td>
+                        <td>${n.vendor || '\u2014'}</td>
                         <td class="${secClass}">${(n.security_type || 'unknown').toUpperCase()}</td>
-                        <td>${n.first_seen || '—'}</td>
-                        <td>${n.last_seen || '—'}</td>
+                        <td style="color:#555">${n.observation_count || 0}</td>
+                        <td>${n.first_seen || '\u2014'}</td>
+                        <td>${n.last_seen || '\u2014'}</td>
                     `;
                     tbody.appendChild(row);
                 });
@@ -238,19 +255,24 @@
                 document.getElementById('loading').classList.add('hidden');
                 document.getElementById('networks-table').classList.remove('hidden');
                 document.getElementById('network-count').textContent = networks.length + ' networks';
+
+                const offset = (page - 1) * PAGE_SIZE;
+                document.getElementById('page-info').textContent =
+                    `${offset + 1}\u2013${offset + networks.length}`;
+                document.getElementById('btn-prev').disabled = page <= 1;
+                document.getElementById('btn-next').disabled = networks.length < PAGE_SIZE;
             } catch (e) {
                 document.getElementById('loading').textContent = 'Failed to load networks';
                 console.error('Failed to load networks:', e);
             }
         }
 
-        function exportCSV() {
-            window.location.href = '/api/export/csv';
+        function changePage(delta) {
+            loadNetworks(currentPage + delta);
         }
 
-        function exportGeoJSON() {
-            window.open('/api/geojson', '_blank');
-        }
+        function exportCSV() { window.location.href = '/api/export/csv'; }
+        function exportGeoJSON() { window.open('/api/geojson', '_blank'); }
 
         loadStats();
         loadNetworks();

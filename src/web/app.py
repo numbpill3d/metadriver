@@ -3,14 +3,26 @@
 Web interface for WiFi Logger
 """
 
-from flask import Flask, render_template, jsonify, request, send_file
+from flask import Flask, render_template, jsonify, request, send_file, abort
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
 import sqlite3
 
-def create_app(db_manager):
+def create_app(db_manager, api_key: str = ''):
     app = Flask(__name__)
+
+    def _check_api_key():
+        if not api_key:
+            return
+        key = request.headers.get('X-API-Key') or request.args.get('api_key')
+        if key != api_key:
+            abort(401)
+
+    @app.before_request
+    def auth():
+        if request.path.startswith('/api/'):
+            _check_api_key()
     
     @app.route('/')
     def index():
@@ -24,8 +36,6 @@ def create_app(db_manager):
     @app.route('/api/networks')
     def get_networks():
         filters = {}
-        
-        # Apply filters from query parameters
         if request.args.get('essid'):
             filters['essid_like'] = request.args.get('essid')
         if request.args.get('vendor'):
@@ -34,7 +44,12 @@ def create_app(db_manager):
             filters['security_type'] = request.args.get('security')
         if request.args.get('hidden'):
             filters['is_hidden'] = bool(request.args.get('hidden'))
-        
+
+        page = max(1, int(request.args.get('page', 1)))
+        limit = min(500, max(1, int(request.args.get('limit', 100))))
+        filters['limit'] = limit
+        filters['offset'] = (page - 1) * limit
+
         networks = db_manager.query_networks(filters)
         return jsonify(networks)
     
@@ -79,7 +94,8 @@ def create_app(db_manager):
                 'vendor': network['vendor'] or 'Unknown',
                 'security_type': network['security_type'] or 'Unknown',
                 'first_seen': network['first_seen'],
-                'last_seen': network['last_seen']
+                'last_seen': network['last_seen'],
+                'observation_count': network.get('observation_count', 0)
             })
         
         output.seek(0)

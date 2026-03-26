@@ -33,15 +33,12 @@ echo "Installing Python packages..."
 pip install --upgrade pip
 pip install \
     scapy \
-    pandas \
     flask \
-    flask-sqlalchemy \
+    waitress \
     pyyaml \
-    gps3 \
+    gpsd-py3 \
     python-daemon \
-    schedule \
-    requests \
-    folium
+    requests
 
 # Clone or create project structure
 PROJECT_DIR="/opt/wifi-logger"
