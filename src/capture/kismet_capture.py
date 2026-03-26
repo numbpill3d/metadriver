@@ -21,9 +21,9 @@ class KismetIntegration:
     def __init__(self, db_manager, kismet_log_dir: str = "/var/log/kismet"):
         self.db = db_manager
         self.kismet_dir = Path(kismet_log_dir)
-        # Tracks per-file the highest last_time already imported (kismetdb)
-        # or mtime at time of full import (netxml)
-        self._watermarks: dict = {}  # path_str -> last_time (int) or mtime (float)
+        self._watermarks: dict = {}
+        self.session_id: Optional[int] = None
+        self.total_packets: int = 0
         
     def start_kismet(self, interface: str = "wlan0mon", gps: Optional[str] = None):
         """Start Kismet with proper configuration"""
@@ -124,6 +124,7 @@ class KismetIntegration:
                 try:
                     self.db.add_observation(network_data, observation_data)
                     processed += 1
+                    self.total_packets += 1
                     if device['last_time'] > max_time:
                         max_time = device['last_time']
                 except Exception as e:
@@ -143,6 +144,7 @@ class KismetIntegration:
         if self._watermarks.get(key) == current_mtime:
             return  # file unchanged since last import
 
+        try:
             tree = ET.parse(xml_path)
             root = tree.getroot()
             
@@ -224,6 +226,7 @@ class KismetIntegration:
                 try:
                     self.db.add_observation(network_data, observation_data)
                     processed += 1
+                    self.total_packets += 1
                 except Exception as e:
                     logger.error(f"Error processing network {bssid_text}: {e}")
             

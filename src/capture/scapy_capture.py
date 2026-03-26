@@ -28,6 +28,8 @@ class ScapyCapture:
         self.min_rssi = min_rssi
         self.networks_seen = set()
         self._hopping = False
+        self.session_id: Optional[int] = None
+        self.total_packets: int = 0
 
         if not SCAPY_AVAILABLE:
             logger.warning("Scapy is not installed. Install with: pip install scapy")
@@ -117,7 +119,8 @@ class ScapyCapture:
         # Add to database
         try:
             self.db.add_observation(network_data, observation_data)
-            
+            self.total_packets += 1
+
             # Log new networks
             if bssid not in self.networks_seen:
                 self.networks_seen.add(bssid)

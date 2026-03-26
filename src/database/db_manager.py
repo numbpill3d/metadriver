@@ -237,6 +237,49 @@ class WiFiDatabase:
             conn.commit()
             return obs_id
     
+    def start_session(self, interface: str, gps_device: Optional[str] = None,
+                       file_path: Optional[str] = None, notes: Optional[str] = None) -> int:
+        """Record the start of a capture session, return session ID."""
+        with sqlite3.connect(str(self.db_path)) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO capture_sessions (start_time, interface, gps_device, file_path, notes)
+                VALUES (?, ?, ?, ?, ?)
+            """, (datetime.utcnow(), interface, gps_device, file_path, notes))
+            conn.commit()
+            return cursor.lastrowid
+
+    def end_session(self, session_id: int, total_packets: int = 0):
+        """Record the end of a capture session with final packet/network counts."""
+        with sqlite3.connect(str(self.db_path)) as conn:
+            cursor = conn.cursor()
+            # Count distinct networks seen during this session by joining observations
+            # recorded after the session start_time
+            cursor.execute("""
+                UPDATE capture_sessions
+                SET end_time = ?,
+                    total_packets = ?,
+                    total_networks = (
+                        SELECT COUNT(DISTINCT o.network_id)
+                        FROM observations o
+                        JOIN capture_sessions cs ON cs.id = ?
+                        WHERE o.timestamp >= cs.start_time
+                    )
+                WHERE id = ?
+            """, (datetime.utcnow(), total_packets, session_id, session_id))
+            conn.commit()
+
+    def get_sessions(self, limit: int = 50) -> List[Dict]:
+        """Return recent capture sessions."""
+        with sqlite3.connect(str(self.db_path)) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM capture_sessions
+                ORDER BY start_time DESC LIMIT ?
+            """, (limit,))
+            return [dict(row) for row in cursor.fetchall()]
+
     def add_gps_point(self, gps_data: Dict) -> int:
         """Add GPS tracking point"""
         with sqlite3.connect(str(self.db_path)) as conn:

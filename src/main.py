@@ -37,6 +37,7 @@ class WiFiLogger:
         self.gps = None
         self.capture = None
         self.running = False
+        self.session_id = None
         self.last_backup = datetime.utcnow()
         self.last_cleanup = datetime.utcnow()
         
