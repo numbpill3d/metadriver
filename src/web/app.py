@@ -109,5 +109,10 @@ def create_app(db_manager, api_key: str = ''):
     @app.route('/api/map')
     def map_view():
         return render_template('map.html')
-    
+
+    @app.route('/api/sessions')
+    def get_sessions():
+        sessions = db_manager.get_sessions()
+        return jsonify(sessions)
+
     return app

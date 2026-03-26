@@ -57,3 +57,8 @@ chmod 755 /var/lib/wifi-logger
 
 echo "Installation complete!"
 echo "Please configure your settings in $PROJECT_DIR/config/config.yaml"
+
+# Import OUI vendor database
+echo "Importing OUI vendor database (requires internet)..."
+python3 $PROJECT_DIR/scripts/import_oui.py --db /var/lib/wifi-logger/wifi_data.db || \
+    echo "OUI import failed — run manually: python3 scripts/import_oui.py --db /var/lib/wifi-logger/wifi_data.db"

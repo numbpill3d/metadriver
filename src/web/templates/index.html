@@ -3,280 +3,473 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MetaDriver — WiFi Logger</title>
+    <title>METADRIVER</title>
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+
+        :root {
+            --bg:       #000;
+            --bg1:      #080808;
+            --bg2:      #0f0f0f;
+            --border:   #222;
+            --border-hi:#444;
+            --fg:       #ccc;
+            --fg-dim:   #444;
+            --fg-mid:   #777;
+            --white:    #eee;
+        }
+
         * { margin: 0; padding: 0; box-sizing: border-box; }
+
         body {
-            font-family: 'Courier New', monospace;
-            background: #0a0a0a;
-            color: #00ff41;
+            font-family: 'Share Tech Mono', 'Courier New', monospace;
+            background: var(--bg);
+            color: var(--fg);
             min-height: 100vh;
+            background-image: repeating-linear-gradient(
+                0deg, transparent, transparent 2px,
+                rgba(255,255,255,0.012) 2px, rgba(255,255,255,0.012) 4px
+            );
         }
+
         header {
-            background: #111;
-            border-bottom: 1px solid #00ff41;
-            padding: 1rem 2rem;
+            background: var(--bg);
+            border-bottom: 1px solid var(--border-hi);
+            padding: 1.2rem 2rem;
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
-        header h1 { font-size: 1.4rem; letter-spacing: 2px; }
-        header .status { color: #0f0; font-size: 0.85rem; }
-        .container { max-width: 1400px; margin: 0 auto; padding: 1.5rem; }
+        .logo-sigil { font-size: 0.6rem; letter-spacing: 0.4rem; color: var(--fg-dim); text-transform: uppercase; }
+        .logo-main  { font-size: 1.3rem; letter-spacing: 0.35rem; color: var(--white); text-transform: uppercase; }
+        .logo-main::before { content: '\u2B21 '; font-size: 0.9rem; opacity: 0.4; }
+        .header-right { display: flex; flex-direction: column; align-items: flex-end; gap: 0.2rem; }
+        .status-line  { font-size: 0.7rem; letter-spacing: 0.15rem; color: var(--fg-mid); }
+        .status-dot   { display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+                        background: var(--white); margin-right: 0.4rem; animation: pulse 2s infinite; }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.2} }
+        .clock { font-size: 0.75rem; color: var(--fg-dim); letter-spacing: 0.1rem; }
+
+        .container { max-width: 1400px; margin: 0 auto; padding: 1.5rem 2rem; }
+
+        .divider {
+            border: none; border-top: 1px solid var(--border); margin: 1.5rem 0; position: relative;
+        }
+        .divider::before {
+            content: attr(data-label); position: absolute; top: -0.55rem; left: 1rem;
+            background: var(--bg); padding: 0 0.5rem;
+            font-size: 0.65rem; letter-spacing: 0.2rem; color: var(--fg-dim); text-transform: uppercase;
+        }
+
         .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 1rem;
-            margin-bottom: 2rem;
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 1px; border: 1px solid var(--border); margin-bottom: 2rem; background: var(--border);
         }
-        .stat-card {
-            background: #111;
-            border: 1px solid #1a3a1a;
-            border-radius: 4px;
-            padding: 1rem;
-            text-align: center;
+        .stat-card { background: var(--bg1); padding: 1rem 0.8rem; text-align: center; position: relative; }
+        .stat-card::before {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+            background: linear-gradient(90deg, transparent, var(--border-hi), transparent);
         }
-        .stat-card .value {
-            font-size: 2rem;
-            font-weight: bold;
-            color: #00ff41;
-        }
-        .stat-card .label {
-            font-size: 0.8rem;
-            color: #666;
-            margin-top: 0.3rem;
-        }
-        .panel {
-            background: #111;
-            border: 1px solid #1a3a1a;
-            border-radius: 4px;
-            margin-bottom: 1.5rem;
-        }
-        .panel-header {
-            padding: 0.8rem 1rem;
-            border-bottom: 1px solid #1a3a1a;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .panel-header h2 { font-size: 1rem; }
-        .panel-body { padding: 1rem; overflow-x: auto; }
-        table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-        th, td { padding: 0.5rem 0.8rem; text-align: left; border-bottom: 1px solid #1a1a1a; }
-        th { color: #00aa30; font-weight: normal; text-transform: uppercase; font-size: 0.75rem; }
-        tr:hover { background: #0a1a0a; }
-        .security-open { color: #ff4444; }
-        .security-wep { color: #ff8800; }
-        .security-wpa { color: #ffff00; }
-        .security-wpa2 { color: #00ff41; }
-        .security-wpa3 { color: #00ccff; }
-        .btn {
-            background: transparent;
-            border: 1px solid #00ff41;
-            color: #00ff41;
-            padding: 0.4rem 1rem;
-            cursor: pointer;
-            font-family: inherit;
-            font-size: 0.8rem;
-            border-radius: 3px;
-            transition: all 0.2s;
-        }
-        .btn:hover { background: #00ff41; color: #000; }
+        .stat-card .value { font-size: 1.8rem; color: var(--white); display: block; line-height: 1; }
+        .stat-card .label { font-size: 0.65rem; color: var(--fg-dim); letter-spacing: 0.2rem; margin-top: 0.4rem; text-transform: uppercase; }
+
         .toolbar { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; align-items: center; }
-        input[type="text"] {
-            background: #0a0a0a;
-            border: 1px solid #1a3a1a;
-            color: #00ff41;
-            padding: 0.4rem 0.8rem;
-            font-family: inherit;
-            font-size: 0.85rem;
-            border-radius: 3px;
+        input[type="text"], select {
+            background: var(--bg1); border: 1px solid var(--border); color: var(--fg);
+            padding: 0.35rem 0.7rem; font-family: inherit; font-size: 0.8rem;
+            letter-spacing: 0.05rem; outline: none; transition: border-color 0.15s;
         }
-        input[type="text"]:focus { outline: none; border-color: #00ff41; }
+        input[type="text"]:focus, select:focus { border-color: var(--border-hi); }
+        select option { background: var(--bg1); }
+
+        .btn {
+            background: transparent; border: 1px solid var(--border-hi); color: var(--fg-mid);
+            padding: 0.35rem 0.9rem; cursor: pointer; font-family: inherit;
+            font-size: 0.75rem; letter-spacing: 0.1rem; text-transform: uppercase; transition: all 0.15s;
+        }
+        .btn:hover { background: var(--white); color: #000; border-color: var(--white); }
+        .btn:disabled { opacity: 0.25; cursor: default; }
+        .btn:disabled:hover { background: transparent; color: var(--fg-mid); border-color: var(--border-hi); }
+
+        .panel { border: 1px solid var(--border); margin-bottom: 1.5rem; background: var(--bg1); }
+        .panel-header {
+            padding: 0.6rem 1rem; border-bottom: 1px solid var(--border);
+            display: flex; justify-content: space-between; align-items: center; background: var(--bg2);
+        }
+        .panel-header h2 { font-size: 0.7rem; letter-spacing: 0.25rem; text-transform: uppercase; color: var(--fg-mid); }
+        .panel-header h2::before { content: '// '; opacity: 0.4; }
+        .panel-meta { font-size: 0.7rem; color: var(--fg-dim); letter-spacing: 0.05rem; }
+        .panel-body { padding: 1rem; overflow-x: auto; }
+
+        table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+        th {
+            font-weight: normal; text-transform: uppercase; font-size: 0.65rem;
+            letter-spacing: 0.15rem; color: var(--fg-dim); padding: 0.4rem 0.8rem;
+            border-bottom: 1px solid var(--border); text-align: left;
+        }
+        td { padding: 0.45rem 0.8rem; border-bottom: 1px solid #111; color: var(--fg); vertical-align: middle; }
+        tr:last-child td { border-bottom: none; }
+        tr.clickable { cursor: pointer; }
+        tr.clickable:hover td { background: var(--bg2); }
+
+        .sec {
+            display: inline-block; padding: 0.1rem 0.4rem;
+            font-size: 0.65rem; letter-spacing: 0.1rem; border: 1px solid currentColor;
+        }
+        .sec-open    { color: #fff;  border-color: #fff; }
+        .sec-wep     { color: #888;  border-color: #888; }
+        .sec-wpa     { color: #aaa;  border-color: #aaa; }
+        .sec-wpa2    { color: #ccc;  border-color: #ccc; }
+        .sec-wpa3    { color: #eee;  border-color: #eee; }
+        .sec-unknown { color: #444;  border-color: #444; }
+
+        .bssid        { color: var(--fg-mid); font-size: 0.75rem; }
+        .essid-hidden { color: var(--fg-dim); font-style: italic; }
+        .obs-count    { color: var(--fg-dim); }
+
+        .pagination {
+            display: flex; gap: 0.5rem; align-items: center;
+            margin-top: 1rem; padding-top: 0.8rem; border-top: 1px solid var(--border);
+        }
+        .page-info { font-size: 0.7rem; color: var(--fg-dim); flex: 1; text-align: center; }
+
+        .sec-dist { display: flex; gap: 1px; background: var(--border); border: 1px solid var(--border); }
+        .sec-dist-item { flex: 1; background: var(--bg1); padding: 0.8rem; text-align: center; }
+        .sec-dist-item .sd-count { font-size: 1.4rem; color: var(--white); }
+        .sec-dist-item .sd-label { font-size: 0.6rem; letter-spacing: 0.2rem; color: var(--fg-dim); margin-top: 0.3rem; text-transform: uppercase; }
+
+        /* sessions table */
+        .session-row td { font-size: 0.75rem; }
+        .session-active { color: var(--white); }
+
+        #loading { text-align: center; padding: 2rem; color: var(--fg-dim); font-size: 0.75rem; letter-spacing: 0.2rem; }
+        #loading::before { content: '[ '; }
+        #loading::after  { content: ' ]'; }
         .hidden { display: none; }
-        #loading { text-align: center; padding: 2rem; color: #555; }
-        .pagination { display: flex; gap: 0.5rem; align-items: center; margin-top: 1rem; }
-        .pagination span { color: #555; font-size: 0.8rem; }
+
+        /* ── MODAL ── */
+        .modal-overlay {
+            display: none; position: fixed; inset: 0;
+            background: rgba(0,0,0,0.85); z-index: 1000;
+            align-items: center; justify-content: center;
+        }
+        .modal-overlay.open { display: flex; }
+        .modal {
+            background: var(--bg1); border: 1px solid var(--border-hi);
+            width: min(900px, 95vw); max-height: 85vh;
+            display: flex; flex-direction: column;
+        }
+        .modal-header {
+            padding: 0.8rem 1rem; border-bottom: 1px solid var(--border);
+            display: flex; justify-content: space-between; align-items: center;
+            background: var(--bg2); flex-shrink: 0;
+        }
+        .modal-header h3 { font-size: 0.8rem; letter-spacing: 0.2rem; color: var(--white); text-transform: uppercase; }
+        .modal-close {
+            background: none; border: 1px solid var(--border); color: var(--fg-mid);
+            cursor: pointer; font-family: inherit; font-size: 0.75rem; padding: 0.2rem 0.6rem;
+        }
+        .modal-close:hover { border-color: var(--white); color: var(--white); }
+        .modal-body { padding: 1rem; overflow-y: auto; flex: 1; }
+        .modal-meta {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1px; background: var(--border); border: 1px solid var(--border); margin-bottom: 1rem;
+        }
+        .modal-meta-item { background: var(--bg1); padding: 0.6rem 0.8rem; }
+        .modal-meta-item .mk { font-size: 0.6rem; letter-spacing: 0.15rem; color: var(--fg-dim); text-transform: uppercase; }
+        .modal-meta-item .mv { font-size: 0.8rem; color: var(--white); margin-top: 0.2rem; }
+        .obs-table th { font-size: 0.6rem; }
+        .obs-table td { font-size: 0.72rem; color: var(--fg-mid); }
+
+        footer {
+            border-top: 1px solid var(--border); padding: 1rem 2rem;
+            font-size: 0.65rem; color: var(--fg-dim); letter-spacing: 0.1rem;
+            display: flex; justify-content: space-between;
+        }
     </style>
 </head>
 <body>
     <header>
-        <h1>⟨ METADRIVER ⟩</h1>
-        <div class="status" id="status">● ONLINE</div>
+        <div>
+            <div class="logo-sigil">signal intelligence / rf recon</div>
+            <div class="logo-main">metadriver</div>
+        </div>
+        <div class="header-right">
+            <div class="status-line"><span class="status-dot"></span><span id="status">NOMINAL</span></div>
+            <div class="clock" id="clock"></div>
+        </div>
     </header>
+
     <div class="container">
-        <div class="stats-grid" id="stats-grid">
-            <div class="stat-card">
-                <div class="value" id="stat-networks">—</div>
-                <div class="label">NETWORKS</div>
-            </div>
-            <div class="stat-card">
-                <div class="value" id="stat-hidden">—</div>
-                <div class="label">HIDDEN</div>
-            </div>
-            <div class="stat-card">
-                <div class="value" id="stat-observations">—</div>
-                <div class="label">OBSERVATIONS</div>
-            </div>
-            <div class="stat-card">
-                <div class="value" id="stat-vendors">—</div>
-                <div class="label">VENDORS</div>
-            </div>
-            <div class="stat-card">
-                <div class="value" id="stat-gps">—</div>
-                <div class="label">GPS POINTS</div>
-            </div>
-            <div class="stat-card">
-                <div class="value" id="stat-24h">—</div>
-                <div class="label">SEEN (24H)</div>
-            </div>
+        <hr class="divider" data-label="telemetry">
+        <div class="stats-grid">
+            <div class="stat-card"><span class="value" id="stat-networks">—</span><span class="label">Networks</span></div>
+            <div class="stat-card"><span class="value" id="stat-hidden">—</span><span class="label">Hidden</span></div>
+            <div class="stat-card"><span class="value" id="stat-observations">—</span><span class="label">Observations</span></div>
+            <div class="stat-card"><span class="value" id="stat-vendors">—</span><span class="label">Vendors</span></div>
+            <div class="stat-card"><span class="value" id="stat-gps">—</span><span class="label">GPS Points</span></div>
+            <div class="stat-card"><span class="value" id="stat-24h">—</span><span class="label">Active 24h</span></div>
         </div>
 
+        <hr class="divider" data-label="query">
         <div class="toolbar">
-            <input type="text" id="search-essid" placeholder="Filter by ESSID..." />
-            <input type="text" id="search-vendor" placeholder="Filter by vendor..." />
-            <select id="filter-security" class="btn" style="background:#0a0a0a;">
-                <option value="">All Security</option>
-                <option value="open">Open</option>
-                <option value="wep">WEP</option>
-                <option value="wpa">WPA</option>
-                <option value="wpa2">WPA2</option>
-                <option value="wpa3">WPA3</option>
+            <input type="text" id="search-essid" placeholder="essid filter" />
+            <input type="text" id="search-vendor" placeholder="vendor filter" />
+            <select id="filter-security">
+                <option value="">all enc</option>
+                <option value="open">open</option>
+                <option value="wep">wep</option>
+                <option value="wpa">wpa</option>
+                <option value="wpa2">wpa2</option>
+                <option value="wpa3">wpa3</option>
             </select>
-            <button class="btn" onclick="loadNetworks()">Search</button>
-            <button class="btn" onclick="exportCSV()">Export CSV</button>
-            <button class="btn" onclick="exportGeoJSON()">Export GeoJSON</button>
+            <button class="btn" onclick="loadNetworks(1)">exec</button>
+            <button class="btn" onclick="exportCSV()">&rarr; csv</button>
+            <button class="btn" onclick="exportGeoJSON()">&rarr; geojson</button>
+            <button class="btn" onclick="window.location='/api/map'">&rarr; map</button>
         </div>
 
         <div class="panel">
             <div class="panel-header">
-                <h2>Discovered Networks</h2>
-                <span id="network-count" style="color:#555;font-size:0.8rem;"></span>
+                <h2>discovered nodes</h2>
+                <span class="panel-meta" id="network-count"></span>
             </div>
             <div class="panel-body">
-                <div id="loading">Loading...</div>
+                <div id="loading">scanning</div>
                 <table id="networks-table" class="hidden">
                     <thead>
                         <tr>
-                            <th>BSSID</th>
-                            <th>ESSID</th>
-                            <th>Vendor</th>
-                            <th>Security</th>
-                            <th>Observations</th>
-                            <th>First Seen</th>
-                            <th>Last Seen</th>
+                            <th>BSSID</th><th>ESSID</th><th>Vendor</th>
+                            <th>Enc</th><th>Obs</th><th>First</th><th>Last</th>
                         </tr>
                     </thead>
                     <tbody id="networks-body"></tbody>
                 </table>
                 <div class="pagination">
-                    <button class="btn" id="btn-prev" onclick="changePage(-1)" disabled>← Prev</button>
-                    <span id="page-info"></span>
-                    <button class="btn" id="btn-next" onclick="changePage(1)">Next →</button>
+                    <button class="btn" id="btn-prev" onclick="changePage(-1)" disabled>&larr; prev</button>
+                    <span class="page-info" id="page-info"></span>
+                    <button class="btn" id="btn-next" onclick="changePage(1)">next &rarr;</button>
                 </div>
             </div>
         </div>
 
+        <hr class="divider" data-label="encryption distribution">
+        <div id="security-chart" class="sec-dist"></div>
+
+        <hr class="divider" data-label="capture sessions">
         <div class="panel">
             <div class="panel-header">
-                <h2>Security Distribution</h2>
+                <h2>sessions</h2>
+                <span class="panel-meta" id="session-count"></span>
             </div>
             <div class="panel-body">
-                <div id="security-chart" style="display:flex;gap:1rem;flex-wrap:wrap;"></div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>#</th><th>Interface</th><th>Start</th>
+                            <th>End</th><th>Packets</th><th>Networks</th><th>GPS</th>
+                        </tr>
+                    </thead>
+                    <tbody id="sessions-body"></tbody>
+                </table>
             </div>
+        </div>
+    </div>
+
+    <footer>
+        <span>METADRIVER // RF RECON SYSTEM</span>
+        <span id="footer-db"></span>
+    </footer>
+
+    <!-- drilldown modal -->
+    <div class="modal-overlay" id="modal" onclick="closeModal(event)">
+        <div class="modal" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h3 id="modal-title">node detail</h3>
+                <button class="modal-close" onclick="closeModal()">&#x2715; close</button>
+            </div>
+            <div class="modal-body" id="modal-body"></div>
         </div>
     </div>
 
     <script>
         const PAGE_SIZE = 100;
         let currentPage = 1;
-        let lastNetworkCount = 0;
+
+        function updateClock() {
+            document.getElementById('clock').textContent =
+                new Date().toISOString().replace('T',' ').slice(0,19) + ' UTC';
+        }
+        updateClock();
+        setInterval(updateClock, 1000);
 
         async function loadStats() {
             try {
-                const res = await fetch('/api/stats');
-                const stats = await res.json();
-                document.getElementById('stat-networks').textContent = stats.total_networks || 0;
-                document.getElementById('stat-hidden').textContent = stats.hidden_networks || 0;
-                document.getElementById('stat-observations').textContent = stats.total_observations || 0;
-                document.getElementById('stat-vendors').textContent = stats.unique_vendors || 0;
-                document.getElementById('stat-gps').textContent = stats.gps_points || 0;
-                document.getElementById('stat-24h').textContent = stats.networks_seen_24h || 0;
+                const s = await fetch('/api/stats').then(r => r.json());
+                document.getElementById('stat-networks').textContent     = s.total_networks    ?? '—';
+                document.getElementById('stat-hidden').textContent       = s.hidden_networks   ?? '—';
+                document.getElementById('stat-observations').textContent = s.total_observations?? '—';
+                document.getElementById('stat-vendors').textContent      = s.unique_vendors    ?? '—';
+                document.getElementById('stat-gps').textContent          = s.gps_points        ?? '—';
+                document.getElementById('stat-24h').textContent          = s.networks_seen_24h ?? '—';
+                document.getElementById('footer-db').textContent =
+                    `${s.total_networks ?? 0} nodes / ${s.total_observations ?? 0} obs`;
 
-                const chartEl = document.getElementById('security-chart');
-                chartEl.innerHTML = '';
-                if (stats.security_distribution) {
-                    for (const [type, count] of Object.entries(stats.security_distribution)) {
-                        const bar = document.createElement('div');
-                        bar.className = 'stat-card';
-                        bar.innerHTML = `<div class="value security-${type || 'open'}">${count}</div><div class="label">${type || 'N/A'}</div>`;
-                        chartEl.appendChild(bar);
-                    }
+                const chart = document.getElementById('security-chart');
+                chart.innerHTML = '';
+                for (const [type, count] of Object.entries(s.security_distribution || {})) {
+                    const el = document.createElement('div');
+                    el.className = 'sec-dist-item';
+                    el.innerHTML = `<div class="sd-count">${count}</div><div class="sd-label">${type||'n/a'}</div>`;
+                    chart.appendChild(el);
                 }
-            } catch (e) {
-                console.error('Failed to load stats:', e);
-            }
+            } catch(e) { console.error(e); }
         }
 
         async function loadNetworks(page = 1) {
             currentPage = page;
             const params = new URLSearchParams();
-            const essid = document.getElementById('search-essid').value;
-            const vendor = document.getElementById('search-vendor').value;
+            const essid    = document.getElementById('search-essid').value;
+            const vendor   = document.getElementById('search-vendor').value;
             const security = document.getElementById('filter-security').value;
-            if (essid) params.set('essid', essid);
-            if (vendor) params.set('vendor', vendor);
+            if (essid)    params.set('essid', essid);
+            if (vendor)   params.set('vendor', vendor);
             if (security) params.set('security', security);
             params.set('page', page);
             params.set('limit', PAGE_SIZE);
 
             try {
-                const res = await fetch('/api/networks?' + params.toString());
-                const networks = await res.json();
-                lastNetworkCount = networks.length;
+                const networks = await fetch('/api/networks?' + params).then(r => r.json());
                 const tbody = document.getElementById('networks-body');
                 tbody.innerHTML = '';
 
                 networks.forEach(n => {
-                    const secClass = 'security-' + (n.security_type || 'open');
+                    const sec = (n.security_type || 'unknown').toLowerCase().replace('/','-');
                     const row = document.createElement('tr');
+                    row.className = 'clickable';
+                    row.dataset.id = n.id;
+                    row.dataset.bssid = n.bssid;
+                    row.dataset.essid = n.essid || '';
                     row.innerHTML = `
-                        <td>${n.bssid}</td>
-                        <td>${n.essid || '<em style="color:#555">Hidden</em>'}</td>
-                        <td>${n.vendor || '\u2014'}</td>
-                        <td class="${secClass}">${(n.security_type || 'unknown').toUpperCase()}</td>
-                        <td style="color:#555">${n.observation_count || 0}</td>
-                        <td>${n.first_seen || '\u2014'}</td>
-                        <td>${n.last_seen || '\u2014'}</td>
+                        <td class="bssid">${n.bssid}</td>
+                        <td>${n.essid ? n.essid : '<span class="essid-hidden">\u2205 hidden</span>'}</td>
+                        <td style="color:var(--fg-mid)">${n.vendor||'—'}</td>
+                        <td><span class="sec sec-${sec}">${(n.security_type||'?').toUpperCase()}</span></td>
+                        <td class="obs-count">${n.observation_count??0}</td>
+                        <td style="color:var(--fg-dim);font-size:.72rem">${(n.first_seen||'—').slice(0,16)}</td>
+                        <td style="color:var(--fg-dim);font-size:.72rem">${(n.last_seen ||'—').slice(0,16)}</td>
                     `;
+                    row.addEventListener('click', () => openModal(n));
                     tbody.appendChild(row);
                 });
 
                 document.getElementById('loading').classList.add('hidden');
                 document.getElementById('networks-table').classList.remove('hidden');
-                document.getElementById('network-count').textContent = networks.length + ' networks';
+                document.getElementById('network-count').textContent = networks.length + ' records';
 
                 const offset = (page - 1) * PAGE_SIZE;
                 document.getElementById('page-info').textContent =
-                    `${offset + 1}\u2013${offset + networks.length}`;
+                    networks.length ? `${offset+1} \u2013 ${offset+networks.length}` : 'no results';
                 document.getElementById('btn-prev').disabled = page <= 1;
                 document.getElementById('btn-next').disabled = networks.length < PAGE_SIZE;
-            } catch (e) {
-                document.getElementById('loading').textContent = 'Failed to load networks';
-                console.error('Failed to load networks:', e);
+            } catch(e) {
+                document.getElementById('loading').textContent = 'query failed';
+                console.error(e);
             }
         }
 
-        function changePage(delta) {
-            loadNetworks(currentPage + delta);
+        async function loadSessions() {
+            try {
+                const sessions = await fetch('/api/sessions').then(r => r.json());
+                const tbody = document.getElementById('sessions-body');
+                tbody.innerHTML = '';
+                document.getElementById('session-count').textContent = sessions.length + ' records';
+                sessions.forEach(s => {
+                    const active = !s.end_time;
+                    const tr = document.createElement('tr');
+                    tr.className = 'session-row' + (active ? ' session-active' : '');
+                    tr.innerHTML = `
+                        <td>${s.id}</td>
+                        <td>${s.interface||'—'}</td>
+                        <td style="font-size:.72rem">${(s.start_time||'').slice(0,16)}</td>
+                        <td style="font-size:.72rem">${active ? '<span style="color:var(--white)">ACTIVE</span>' : (s.end_time||'').slice(0,16)}</td>
+                        <td>${s.total_packets??0}</td>
+                        <td>${s.total_networks??0}</td>
+                        <td style="color:var(--fg-dim)">${s.gps_device||'—'}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch(e) { console.error(e); }
         }
 
-        function exportCSV() { window.location.href = '/api/export/csv'; }
+        async function openModal(network) {
+            document.getElementById('modal-title').textContent =
+                `${network.bssid}  ${network.essid ? '// ' + network.essid : '// \u2205 hidden'}`;
+            document.getElementById('modal-body').innerHTML = '<div id="loading" style="padding:2rem;text-align:center;color:var(--fg-dim)">[ loading ]</div>';
+            document.getElementById('modal').classList.add('open');
+
+            try {
+                const obs = await fetch(`/api/network/${network.id}`).then(r => r.json());
+                const sec = (network.security_type || 'unknown').toLowerCase().replace('/','-');
+
+                let html = `<div class="modal-meta">
+                    <div class="modal-meta-item"><div class="mk">BSSID</div><div class="mv">${network.bssid}</div></div>
+                    <div class="modal-meta-item"><div class="mk">ESSID</div><div class="mv">${network.essid||'\u2205 hidden'}</div></div>
+                    <div class="modal-meta-item"><div class="mk">ENC</div><div class="mv"><span class="sec sec-${sec}">${(network.security_type||'?').toUpperCase()}</span></div></div>
+                    <div class="modal-meta-item"><div class="mk">VENDOR</div><div class="mv">${network.vendor||'—'}</div></div>
+                    <div class="modal-meta-item"><div class="mk">FIRST SEEN</div><div class="mv">${(network.first_seen||'—').slice(0,16)}</div></div>
+                    <div class="modal-meta-item"><div class="mk">LAST SEEN</div><div class="mv">${(network.last_seen||'—').slice(0,16)}</div></div>
+                    <div class="modal-meta-item"><div class="mk">OBSERVATIONS</div><div class="mv">${network.observation_count??0}</div></div>
+                </div>`;
+
+                if (obs.length > 0) {
+                    html += `<table class="obs-table">
+                        <thead><tr>
+                            <th>Timestamp</th><th>RSSI</th><th>Ch</th>
+                            <th>Lat</th><th>Lon</th><th>Alt</th>
+                        </tr></thead><tbody>`;
+                    obs.slice(0, 200).forEach(o => {
+                        html += `<tr>
+                            <td>${(o.timestamp||'').slice(0,16)}</td>
+                            <td>${o.rssi??'—'}</td>
+                            <td>${o.channel??'—'}</td>
+                            <td>${o.latitude!=null ? o.latitude.toFixed(5) : '—'}</td>
+                            <td>${o.longitude!=null ? o.longitude.toFixed(5) : '—'}</td>
+                            <td>${o.altitude!=null ? o.altitude.toFixed(1) : '—'}</td>
+                        </tr>`;
+                    });
+                    html += '</tbody></table>';
+                } else {
+                    html += '<div style="color:var(--fg-dim);font-size:.75rem;padding:.5rem 0">[ no observations ]</div>';
+                }
+
+                document.getElementById('modal-body').innerHTML = html;
+            } catch(e) {
+                document.getElementById('modal-body').innerHTML = '<div style="color:var(--fg-dim);padding:1rem">[ failed to load ]</div>';
+                console.error(e);
+            }
+        }
+
+        function closeModal(e) {
+            if (!e || e.target === document.getElementById('modal')) {
+                document.getElementById('modal').classList.remove('open');
+            }
+        }
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+        function changePage(d) { loadNetworks(currentPage + d); }
+        function exportCSV()     { window.location.href = '/api/export/csv'; }
         function exportGeoJSON() { window.open('/api/geojson', '_blank'); }
 
+        // initial load
         loadStats();
         loadNetworks();
+        loadSessions();
+
+        // auto-refresh: stats + networks every 30s, sessions every 60s
         setInterval(loadStats, 30000);
+        setInterval(() => loadNetworks(currentPage), 30000);
+        setInterval(loadSessions, 60000);
     </script>
 </body>
 </html>

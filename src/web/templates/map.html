@@ -3,127 +3,338 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MetaDriver — Map View</title>
+    <title>METADRIVER // MAP</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: 'Courier New', monospace;
-            background: #0a0a0a;
-            color: #00ff41;
+        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+
+        :root {
+            --bg:       #000;
+            --bg1:      #080808;
+            --bg2:      #0f0f0f;
+            --border:   #222;
+            --border-hi:#444;
+            --fg:       #ccc;
+            --fg-dim:   #444;
+            --fg-mid:   #777;
+            --white:    #eee;
         }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Share Tech Mono', 'Courier New', monospace;
+            background: var(--bg);
+            color: var(--fg);
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+
         header {
-            background: #111;
-            border-bottom: 1px solid #00ff41;
-            padding: 0.8rem 2rem;
+            background: var(--bg);
+            border-bottom: 1px solid var(--border-hi);
+            padding: 0.7rem 1.5rem;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            flex-shrink: 0;
             z-index: 1000;
+        }
+        .logo-main {
+            font-size: 1rem;
+            letter-spacing: 0.35rem;
+            color: var(--white);
+            text-transform: uppercase;
+        }
+        .logo-main::before { content: '⬡ '; font-size: 0.75rem; opacity: 0.4; }
+        .logo-sub { font-size: 0.6rem; letter-spacing: 0.3rem; color: var(--fg-dim); margin-top: 0.1rem; }
+        .header-right { display: flex; gap: 1.5rem; align-items: center; }
+        .header-right a {
+            color: var(--fg-mid);
+            text-decoration: none;
+            font-size: 0.7rem;
+            letter-spacing: 0.15rem;
+            text-transform: uppercase;
+            border: 1px solid var(--border);
+            padding: 0.25rem 0.6rem;
+            transition: all 0.15s;
+        }
+        .header-right a:hover { color: var(--white); border-color: var(--border-hi); }
+        .map-legend {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            font-size: 0.65rem;
+            letter-spacing: 0.1rem;
+            color: var(--fg-dim);
+        }
+        .legend-dot {
+            display: inline-block;
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            margin-right: 0.3rem;
+            vertical-align: middle;
+        }
+
+        #map {
+            flex: 1;
+            width: 100%;
+            filter: grayscale(100%) brightness(0.7) contrast(1.1);
+        }
+
+        /* overlay scanlines on map */
+        #map-wrap {
+            flex: 1;
             position: relative;
         }
-        header h1 { font-size: 1.2rem; letter-spacing: 2px; }
-        header a { color: #00ff41; text-decoration: none; font-size: 0.85rem; }
-        header a:hover { text-decoration: underline; }
-        #map { width: 100%; height: calc(100vh - 50px); }
-        .leaflet-popup-content-wrapper {
-            background: #111 !important;
-            color: #00ff41 !important;
-            border: 1px solid #00ff41 !important;
-            border-radius: 4px !important;
-            font-family: 'Courier New', monospace !important;
+        #map-wrap::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background: repeating-linear-gradient(
+                0deg,
+                transparent,
+                transparent 3px,
+                rgba(0,0,0,0.18) 3px,
+                rgba(0,0,0,0.18) 4px
+            );
+            z-index: 500;
         }
-        .leaflet-popup-tip { background: #111 !important; }
-        .popup-label { color: #555; font-size: 0.75rem; text-transform: uppercase; }
-        .popup-value { color: #00ff41; margin-bottom: 0.3rem; }
-        /* Dark cluster icons */
-        .marker-cluster { background: #0a1a0a !important; }
-        .marker-cluster div { background: #00ff41 !important; color: #000 !important;
-            font-family: 'Courier New', monospace; font-weight: bold; }
+
+        /* status bar */
+        #statusbar {
+            background: var(--bg);
+            border-top: 1px solid var(--border);
+            padding: 0.35rem 1.5rem;
+            font-size: 0.65rem;
+            letter-spacing: 0.1rem;
+            color: var(--fg-dim);
+            display: flex;
+            justify-content: space-between;
+            flex-shrink: 0;
+        }
+
+        /* Leaflet popup */
+        .leaflet-popup-content-wrapper {
+            background: var(--bg) !important;
+            color: var(--fg) !important;
+            border: 1px solid var(--border-hi) !important;
+            border-radius: 0 !important;
+            box-shadow: 0 0 20px rgba(255,255,255,0.05) !important;
+            font-family: 'Share Tech Mono', 'Courier New', monospace !important;
+            min-width: 200px;
+        }
+        .leaflet-popup-tip-container { display: none; }
+        .leaflet-popup-content { margin: 0 !important; padding: 0 !important; }
+        .popup-inner { padding: 0.8rem 1rem; }
+        .popup-title {
+            font-size: 0.85rem;
+            color: var(--white);
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0.4rem;
+            margin-bottom: 0.5rem;
+            letter-spacing: 0.05rem;
+        }
+        .popup-row { display: flex; justify-content: space-between; gap: 1rem; margin-bottom: 0.2rem; }
+        .popup-key { font-size: 0.65rem; letter-spacing: 0.1rem; color: var(--fg-dim); text-transform: uppercase; }
+        .popup-val { font-size: 0.75rem; color: var(--fg); text-align: right; }
+        .popup-sec {
+            display: inline-block;
+            padding: 0.05rem 0.3rem;
+            font-size: 0.65rem;
+            border: 1px solid var(--border-hi);
+            color: var(--white);
+            letter-spacing: 0.1rem;
+        }
+
+        /* cluster overrides — monochrome */
+        .marker-cluster-small,
+        .marker-cluster-medium,
+        .marker-cluster-large {
+            background: rgba(30,30,30,0.9) !important;
+            border: 1px solid #444 !important;
+        }
+        .marker-cluster-small div,
+        .marker-cluster-medium div,
+        .marker-cluster-large div {
+            background: rgba(60,60,60,0.95) !important;
+            color: #ccc !important;
+            font-family: 'Share Tech Mono', monospace !important;
+            font-size: 0.7rem !important;
+            border: none !important;
+        }
+
+        /* Leaflet controls */
+        .leaflet-control-zoom a {
+            background: var(--bg1) !important;
+            color: var(--fg-mid) !important;
+            border-color: var(--border) !important;
+            font-family: inherit !important;
+        }
+        .leaflet-control-zoom a:hover { color: var(--white) !important; }
+        .leaflet-control-attribution {
+            background: rgba(0,0,0,0.7) !important;
+            color: var(--fg-dim) !important;
+            font-size: 0.6rem !important;
+        }
+        .leaflet-control-attribution a { color: var(--fg-dim) !important; }
+
+        .no-data {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 600;
+            color: var(--fg-dim);
+            font-size: 0.8rem;
+            letter-spacing: 0.2rem;
+            text-transform: uppercase;
+            pointer-events: none;
+        }
+        .no-data::before { content: '[ '; }
+        .no-data::after  { content: ' ]'; }
     </style>
 </head>
 <body>
     <header>
-        <h1>⟨ METADRIVER ⟩ MAP</h1>
-        <a href="/">← Dashboard</a>
+        <div>
+            <div class="logo-main">metadriver</div>
+            <div class="logo-sub">spatial rf index</div>
+        </div>
+        <div class="header-right">
+            <div class="map-legend">
+                <span><span class="legend-dot" style="background:#fff"></span>WPA3</span>
+                <span><span class="legend-dot" style="background:#bbb"></span>WPA2</span>
+                <span><span class="legend-dot" style="background:#777"></span>WPA</span>
+                <span><span class="legend-dot" style="background:#444"></span>WEP</span>
+                <span><span class="legend-dot" style="background:#fff;border:1px solid #fff;box-shadow:0 0 4px #fff"></span>OPEN</span>
+            </div>
+            <a href="/">← index</a>
+        </div>
     </header>
-    <div id="map"></div>
+
+    <div id="map-wrap">
+        <div id="map"></div>
+    </div>
+
+    <div id="statusbar">
+        <span id="sb-left">loading observations...</span>
+        <span id="sb-right"></span>
+    </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script>
-        const map = L.map('map').setView([0, 0], 2);
+        const map = L.map('map', { zoomControl: true }).setView([0, 0], 2);
 
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-            attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
-            subdomains: 'abcd',
+        // Stamen Toner — pure black/white map tiles
+        L.tileLayer('https://stamen-tiles.a.ssl.fastly.net/toner/{z}/{x}/{y}.png', {
+            attribution: 'Map tiles by <a href="http://stamen.com">Stamen Design</a>, <a href="http://creativecommons.org/licenses/by/3.0">CC BY 3.0</a>',
             maxZoom: 20
         }).addTo(map);
 
-        function getSecurityColor(security) {
-            const colors = {
-                'open': '#ff4444',
-                'wep': '#ff8800',
-                'wpa': '#ffff00',
-                'wpa2': '#00ff41',
-                'wpa3': '#00ccff',
-                'wpa2/wpa': '#88ff00',
-                'wpa2/wpa3': '#00eeff'
+        function getSecurityColor(sec) {
+            const c = {
+                'open':      '#ffffff',
+                'wep':       '#555555',
+                'wpa':       '#888888',
+                'wpa2':      '#bbbbbb',
+                'wpa3':      '#eeeeee',
+                'wpa2/wpa':  '#aaaaaa',
+                'wpa2/wpa3': '#dddddd',
             };
-            return colors[security] || '#888888';
+            return c[sec] || '#444444';
+        }
+
+        function getSecurityOpacity(sec) {
+            return sec === 'open' ? 1.0 : 0.75;
         }
 
         async function loadGeoJSON() {
+            document.getElementById('sb-left').textContent = 'fetching observations...';
             try {
                 const res = await fetch('/api/geojson');
                 const geojson = await res.json();
+                const count = geojson.features.length;
 
-                if (geojson.features.length === 0) {
-                    document.getElementById('map').innerHTML += '<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1000;color:#555;font-size:1.2rem;">No geolocated observations yet</div>';
+                if (count === 0) {
+                    document.getElementById('map-wrap').insertAdjacentHTML(
+                        'beforeend', '<div class="no-data">no geolocated observations</div>'
+                    );
+                    document.getElementById('sb-left').textContent = 'no data';
                     return;
                 }
 
                 const cluster = L.markerClusterGroup({
-                    maxClusterRadius: 40,
+                    maxClusterRadius: 35,
                     spiderfyOnMaxZoom: true,
-                    showCoverageOnHover: false
+                    showCoverageOnHover: false,
+                    zoomToBoundsOnClick: true
                 });
 
                 const geoLayer = L.geoJSON(geojson, {
-                    pointToLayer: function(feature, latlng) {
+                    pointToLayer(feature, latlng) {
+                        const sec = feature.properties.security;
                         return L.circleMarker(latlng, {
-                            radius: 6,
-                            fillColor: getSecurityColor(feature.properties.security),
+                            radius: 5,
+                            fillColor: getSecurityColor(sec),
                             color: '#000',
                             weight: 1,
-                            opacity: 1,
-                            fillOpacity: 0.8
+                            opacity: 0.8,
+                            fillOpacity: getSecurityOpacity(sec)
                         });
                     },
-                    onEachFeature: function(feature, layer) {
+                    onEachFeature(feature, layer) {
                         const p = feature.properties;
+                        const sec = (p.security || 'unknown').toUpperCase();
                         layer.bindPopup(`
-                            <div class="popup-label">ESSID</div>
-                            <div class="popup-value">${p.essid}</div>
-                            <div class="popup-label">BSSID</div>
-                            <div class="popup-value">${p.bssid}</div>
-                            <div class="popup-label">Security</div>
-                            <div class="popup-value">${(p.security || 'unknown').toUpperCase()}</div>
-                            <div class="popup-label">RSSI</div>
-                            <div class="popup-value">${p.rssi || '\u2014'} dBm</div>
-                            <div class="popup-label">Channel</div>
-                            <div class="popup-value">${p.channel || '\u2014'}</div>
-                        `);
+                            <div class="popup-inner">
+                                <div class="popup-title">${p.essid || '∅ hidden'}</div>
+                                <div class="popup-row">
+                                    <span class="popup-key">BSSID</span>
+                                    <span class="popup-val">${p.bssid}</span>
+                                </div>
+                                <div class="popup-row">
+                                    <span class="popup-key">ENC</span>
+                                    <span class="popup-val"><span class="popup-sec">${sec}</span></span>
+                                </div>
+                                <div class="popup-row">
+                                    <span class="popup-key">RSSI</span>
+                                    <span class="popup-val">${p.rssi ?? '—'} dBm</span>
+                                </div>
+                                <div class="popup-row">
+                                    <span class="popup-key">CH</span>
+                                    <span class="popup-val">${p.channel ?? '—'}</span>
+                                </div>
+                                <div class="popup-row">
+                                    <span class="popup-key">VENDOR</span>
+                                    <span class="popup-val">${p.vendor || '—'}</span>
+                                </div>
+                                <div class="popup-row">
+                                    <span class="popup-key">TS</span>
+                                    <span class="popup-val" style="font-size:0.65rem">${(p.timestamp||'').slice(0,16)}</span>
+                                </div>
+                            </div>
+                        `, { maxWidth: 260 });
                     }
                 });
 
                 cluster.addLayer(geoLayer);
                 map.addLayer(cluster);
-                map.fitBounds(geoLayer.getBounds(), { padding: [30, 30] });
-            } catch (e) {
-                console.error('Failed to load GeoJSON:', e);
+                map.fitBounds(geoLayer.getBounds(), { padding: [40, 40] });
+
+                document.getElementById('sb-left').textContent =
+                    `${count} observations loaded`;
+                document.getElementById('sb-right').textContent =
+                    `bounds: ${map.getBounds().toBBoxString()}`;
+
+            } catch(e) {
+                document.getElementById('sb-left').textContent = 'fetch error';
+                console.error(e);
             }
         }
 

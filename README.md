@@ -95,8 +95,21 @@ python3 src/main.py --config config/config.yaml --stats
 # Export data to GeoJSON
 python3 src/main.py --config config/config.yaml --export output.geojson
 
+# Export data to CSV
+python3 src/main.py --config config/config.yaml --export output.csv
+
 # Run as daemon
 python3 src/main.py --config config/config.yaml --service
+```
+
+### Import OUI Vendor Database (recommended, one-time)
+
+```bash
+# Downloads IEEE OUI CSV (~5MB) and imports into the database
+python3 scripts/import_oui.py --db /var/lib/wifi-logger/wifi_data.db
+
+# Or use a local file
+python3 scripts/import_oui.py --db /var/lib/wifi-logger/wifi_data.db --file oui.csv
 ```
 
 ### Systemd Service
@@ -115,8 +128,9 @@ When `web.enabled` is `true` in the config, the dashboard is available at `http:
 - **Map** (`/api/map`) — Interactive dark-themed map with color-coded security markers
 - **API Endpoints**:
   - `GET /api/stats` — Database statistics
-  - `GET /api/networks` — Query networks (supports `essid`, `vendor`, `security` filters)
+  - `GET /api/networks` — Query networks (supports `essid`, `vendor`, `security`, `page`, `limit` filters)
   - `GET /api/network/<id>` — Observations for a specific network
+  - `GET /api/sessions` — Recent capture sessions
   - `GET /api/geojson` — GeoJSON export
   - `GET /api/export/csv` — CSV download
 
